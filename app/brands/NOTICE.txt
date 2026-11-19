@@ -1,0 +1,13 @@
+Xbox, PlayStation, and Steam brand glyphs from Font Awesome Free 7.3.1 by Fonticons, Inc.
+Source: https://fontawesome.com/ and https://www.npmjs.com/package/@fortawesome/free-brands-svg-icons
+Icons licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+Modifications: white fill, scaling, and colored square tile backgrounds.
+Brand names and trademarks belong to their respective owners.
+
+Dog face emoji (U+1F436): Twemoji 16.0.1, graphics by Twitter, Inc. and other contributors.
+Source: https://github.com/jdecked/twemoji/blob/v16.0.1/assets/svg/1f436.svg
+Licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+The original vector artwork is unchanged; displayed at 28 pixels in the greeting.
+See LICENSE-TWEMOJI.txt for the graphics license.
+
+Nintendo Switch mark: Simple Icons (CC0-1.0), https://github.com/simple-icons/simple-icons/tree/c65990f0e4bd50862df3f0b4e0d0d4005bcf1290. Nintendo trademarks belong to Nintendo.

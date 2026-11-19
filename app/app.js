@@ -1,5 +1,5 @@
 /*
- * tvOS style home for webOS: black, a pinned dock row, an app grid, and one glass highlight that
+ * tvOS style home for webOS: black, gaming and streaming sections, and one glass highlight that
  * springs between tiles. A port of the Android launcher in ../../launcher.
  *
  * webOS does not let third-party apps list installed apps, so sync-apps.py writes them into apps.js.
@@ -11,8 +11,8 @@
   var TILE_W = 360, TILE_H = 202;
   var CELL_W = (1920 - 2 * 112) / COLUMNS;
   var ROW_PITCH = 292;
-  var DOCK_TOP = 708;           // tile top of the dock row: next row peeks in at the bottom
-  var DOCK_GAP = 36;            // extra space below the dock
+  var GAME_TOP = 360, DOCK_TOP = 736;   // both highlighted rows fit on the opening screen
+  var SECTION_GAP = 116;        // space for the Other apps heading below the streaming panel
   var FOCUS_SCALE = 1.1;
   var GLASS_PAD = 12;           // room for the glass glow around the scaled tile
   var VIEW_TOP = 80, VIEW_BOTTOM = 1060;    // area grid rows scroll into (the header hides below the dock)
@@ -24,20 +24,18 @@
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
     'October', 'November', 'December'];
 
-  var ICON_INPUT = 'M18,7V4c0,-1.1 -0.9,-2 -2,-2H8C6.9,2 6,2.9 6,4v3H5v6l3,6v3h8v-3l3,-6V7H18zM8,4h8v3h-2V5h-1v2h-2V5h-1v2H8V4z';
-  var ICON_LIVETV = 'M21,6h-7.59l3.29,-3.29L16,2l-4,4l-4,-4l-0.71,0.71L10.59,6H3c-1.1,0 -2,0.89 -2,2v12c0,1.1 0.9,2 2,2h18c1.1,0 2,-0.89 2,-2V8C23,6.89 22.1,6 21,6zM21,20H3V8h18V20zM9,10v8l7,-4L9,10z';
-
   var $ = function (id) { return document.getElementById(id); };
-  var stage = $('stage'), tilesEl = $('tiles'), glass = $('glass'), hero = $('hero');
+  var stage = $('stage'), tilesEl = $('tiles'), glass = $('glass');
   var ambients = [$('ambientA'), $('ambientB')], ambientFront = 0, ambientColor = null;
-  var pills = [$('btnInputs'), $('btnWifi'), $('btnSettings')];
-  var panel = $('inputsPanel');
+  var pills = [$('btnSettings')];
 
   var items = [];               // {app, el, color}
-  var zone = 'grid';            // 'grid' | 'top' | 'inputs'
-  var focused = 0, pillFocus = 0, inputFocus = 0, inputRows = [];
-  var offset = 0, heroShown = false, glassShown = false;
+  var zone = 'grid';            // 'grid' | 'top'
+  var focused = 0, pillFocus = 0;
+  var offset = 0, glassShown = false, gamingCount = 0, streamingCount = 0;
   var editing = null;           // {item, snapshot} while a tile is being moved
+  var stopStartupSound = function () {};
+  var watchlistBrowsing = false, ignoreHoverUntil = 0, lastKeyActivation = 0;
 
   // ---- luna bus ------------------------------------------------------------------------------
 
@@ -59,7 +57,25 @@
     }
   }
 
+  var cecLaunchPending = false;
+
   function launch(id, title, params) {
+    stopStartupSound();
+    var shortcut = (CONFIG.inputApps || []).filter(function (app) { return app.id === id; })[0];
+    if (shortcut && shortcut.cec) {
+      if (cecLaunchPending) return;
+      cecLaunchPending = true;
+      CECInput.resolve(shortcut, luna, function (error, targetParams) {
+        cecLaunchPending = false;
+        if (error) { toast(error); return; }
+        launchNative(shortcut.launchAppId, title, targetParams);
+      });
+      return;
+    }
+    launchNative(id, title, params);
+  }
+
+  function launchNative(id, title, params) {
     luna('luna://com.webos.applicationManager/launch', { id: id, params: params || {} }, function (res) {
       if (res.returnValue === false) toast("Can't open " + (title || id));
     });
@@ -78,29 +94,44 @@
 
   function orderedApps() {
     var all = (window.TV_APPS && TV_APPS.apps) || [];
+    var inputApps = CONFIG.inputApps || [];
+    var inputIds = {};
+    inputApps.forEach(function (a) { inputIds[a.id] = true; });
+    // A TV-discovered HDMI app must not duplicate its branded shortcut.
+    all = all.filter(function (a) { return !inputIds[a.id]; }).concat(inputApps);
     var byId = {};
     all.forEach(function (a) { byId[a.id] = a; });
     var hidden = {};
     (CONFIG.hiddenApps || []).forEach(function (id) { hidden[id] = true; });
     var byTitle = function (a, b) { return a.title.toLowerCase() < b.title.toLowerCase() ? -1 : 1; };
 
-    // An order arranged on the TV wins, until dockApps in config.js changes.
+    // Keep games together, migrating the old single-dock order without disturbing favorites.
     var saved = loadOrder();
-    if (saved) {
-      var placed = [];
-      saved.forEach(function (id) {
-        if (byId[id] && !hidden[id]) { placed.push(byId[id]); hidden[id] = true; }
-      });
-      return placed.concat(all.filter(function (a) { return !hidden[a.id]; }).sort(byTitle));
-    }
-
-    var dock = [];
-    (CONFIG.dockApps || []).forEach(function (id) {
-      if (byId[id] && !hidden[id] && dock.length < COLUMNS) { dock.push(byId[id]); hidden[id] = true; }
+    var gameIds = CONFIG.gamingApps || [];
+    var gameOrder = saved ? saved.ids.concat(gameIds) : gameIds;
+    var games = [];
+    gameOrder.forEach(function (id) {
+      if (gameIds.indexOf(id) !== -1 && byId[id] && !hidden[id]) {
+        games.push(byId[id]); hidden[id] = true;
+      }
     });
-    var rest = all.filter(function (a) { return !hidden[a.id]; });
-    rest.sort(byTitle);
-    return dock.concat(rest);
+    gamingCount = games.length;
+
+    var streamIds = CONFIG.streamingApps || [];
+    var streamOrder = (saved ? saved.ids : (CONFIG.dockApps || [])).concat(streamIds);
+    var streaming = [];
+    streamOrder.forEach(function (id) {
+      if (streamIds.indexOf(id) !== -1 && byId[id] && !hidden[id]) {
+        streaming.push(byId[id]); hidden[id] = true;
+      }
+    });
+    streamingCount = streaming.length;
+
+    var other = [];
+    if (saved) saved.ids.forEach(function (id) {
+      if (byId[id] && !hidden[id]) { other.push(byId[id]); hidden[id] = true; }
+    });
+    return games.concat(streaming, other, all.filter(function (a) { return !hidden[a.id]; }).sort(byTitle));
   }
 
   var ORDER_KEY = 'tvhome.order';
@@ -108,7 +139,7 @@
   function loadOrder() {
     try {
       var s = JSON.parse(localStorage.getItem(ORDER_KEY));
-      return s && s.dock === (CONFIG.dockApps || []).join(',') ? s.ids : null;
+      return s && Array.isArray(s.ids) && s.dock === (CONFIG.dockApps || []).join(',') ? s : null;
     } catch (e) {
       return null;
     }
@@ -118,24 +149,72 @@
     try {
       localStorage.setItem(ORDER_KEY, JSON.stringify({
         dock: (CONFIG.dockApps || []).join(','),
+        gaming: (CONFIG.gamingApps || []).join(','),
         ids: items.map(function (it) { return it.app.id; })
       }));
     } catch (e) { /* storage unavailable: the order lasts until the app restarts */ }
   }
 
-  function rowOf(i) { return Math.floor(i / COLUMNS); }
-  function tileLeft(i) { return 112 + (i % COLUMNS) * CELL_W + (CELL_W - TILE_W) / 2; }
-  function tileTop(i) { var r = rowOf(i); return DOCK_TOP + r * ROW_PITCH + (r > 0 ? DOCK_GAP : 0); }
+  function dockRow() { return gamingCount ? 1 : 0; }
+  function streamingRows() { return Math.ceil(streamingCount / COLUMNS); }
+  function sectionOf(i) { return i < gamingCount ? 'gaming' : i < gamingCount + streamingCount ? 'streaming' : 'other'; }
+  function rowOf(i) {
+    if (i < gamingCount) return 0;
+    if (i < gamingCount + streamingCount) return dockRow() + Math.floor((i - gamingCount) / COLUMNS);
+    return dockRow() + streamingRows() + Math.floor((i - gamingCount - streamingCount) / COLUMNS);
+  }
+  function columnOf(i) {
+    if (i < gamingCount) return i;
+    return (i - gamingCount - (sectionOf(i) === 'other' ? streamingCount : 0)) % COLUMNS;
+  }
+  function indexAt(row, col) {
+    if (row < 0 || row > rowOf(items.length - 1)) return -1;
+    if (gamingCount && row === 0) return Math.min(col, gamingCount - 1);
+    col = Math.min(col, COLUMNS - 1);
+    if (row < dockRow() + streamingRows()) {
+      return Math.min(gamingCount + (row - dockRow()) * COLUMNS + col, gamingCount + streamingCount - 1);
+    }
+    return Math.min(gamingCount + streamingCount + (row - dockRow() - streamingRows()) * COLUMNS + col, items.length - 1);
+  }
+  function rowColumns(i) { return sectionOf(i) === 'gaming' ? Math.max(COLUMNS, gamingCount) : COLUMNS; }
+  function cellWidth(i) { return (1920 - 2 * 112) / rowColumns(i); }
+  function tileWidth(i) { return cellWidth(i) - (CELL_W - TILE_W); }
+  function tileLeft(i) { return 112 + columnOf(i) * cellWidth(i) + (CELL_W - TILE_W) / 2; }
+  function neighborInRow(row, from) {
+    var center = tileLeft(from) + tileWidth(from) / 2, best = -1, distance = Infinity;
+    items.forEach(function (item, i) {
+      if (rowOf(i) !== row) return;
+      var d = Math.abs(tileLeft(i) + tileWidth(i) / 2 - center);
+      if (d < distance) { distance = d; best = i; }
+    });
+    return best;
+  }
+  function detailSpace(i) {
+    var count = items[i] && items[i].shows ? items[i].shows.length : 0;
+    if (zone !== 'grid' || editing || !count) return 70;
+    return Math.max(70, 60 + Math.min(3, count) * 26 + (count > 3 ? 20 : 0));
+  }
+  function watchlistExtra() { return sectionOf(focused) === 'streaming' ? detailSpace(focused) - 70 : 0; }
+  function otherTop() { return DOCK_TOP + streamingRows() * ROW_PITCH + (streamingCount ? SECTION_GAP : 0) + watchlistExtra(); }
+  function tileTop(i) {
+    var r = rowOf(i);
+    if (gamingCount && r === 0) return GAME_TOP;
+    if (sectionOf(i) === 'streaming') return DOCK_TOP + (r - dockRow()) * ROW_PITCH + (r > rowOf(focused) ? watchlistExtra() : 0);
+    return otherTop() + (r - dockRow() - streamingRows()) * ROW_PITCH;
+  }
 
   function build() {
     tilesEl.innerHTML = '';
     items = orderedApps().map(function (app) {
       var el = document.createElement('div');
       el.className = 'item';
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', app.title);
+      el.setAttribute('data-app-id', app.id);
       var card = document.createElement('div');
       card.className = 'card';
       var img = document.createElement('img');
-      var item = { app: app, el: el, card: card, color: null };
+      var item = { app: app, el: el, card: card, color: null, shows: [], watchlistPage: 0 };
       img.onload = function () { paintTile(item, img); };
       img.src = app.icon;
       card.appendChild(img);
@@ -144,9 +223,15 @@
       name.className = 'name';
       name.textContent = app.title;
       el.appendChild(name);
-      el.addEventListener('mouseover', function () {
-        if (zone !== 'inputs' && !editing) focusTile(items.indexOf(item));
-      });
+      item.watchlist = document.createElement('div');
+      item.watchlist.className = 'watchlist';
+      el.appendChild(item.watchlist);
+      function hoverTile() {
+        var i = items.indexOf(item);
+        if (pointerMayFocus() && (zone !== 'grid' || focused !== i)) focusTile(i);
+      }
+      el.addEventListener('mouseover', hoverTile);
+      el.addEventListener('mousemove', hoverTile);
       el.addEventListener('click', function () {
         if (editing) finishEdit(true);
         else launch(app.id, app.title);
@@ -154,7 +239,70 @@
       tilesEl.appendChild(el);
       return item;
     });
+    renderWatchlists();
     layout();
+  }
+
+  function combineWatchlist(shows, movies) {
+    var entries = shows.map(function (title) { return { title: title, mode: 'show' }; });
+    // Let both kinds appear immediately, while keeping the first two shows at the top.
+    if (entries.length > 2 && movies.length) return entries.slice(0, 2).concat(movies.slice(0, 1), entries.slice(2), movies.slice(1));
+    return entries.concat(movies);
+  }
+
+  function renderWatchlist(it) {
+      it.watchlist.textContent = '';
+      it.el.classList.toggle('hasWatchlist', it.shows.length > 0);
+      if (!it.shows.length) return;
+      var heading = document.createElement('div');
+      heading.className = 'watchlistHeading';
+      heading.textContent = 'Your list';
+      it.watchlist.appendChild(heading);
+      var lines = document.createElement('div');
+      lines.className = it.shows.length > 3 ? 'watchlistLines paged' : 'watchlistLines';
+      it.watchlist.appendChild(lines);
+      var start = (it.watchlistPage || 0) * 3;
+      it.shows.slice(start, start + 3).forEach(function (entry) {
+        var line = document.createElement('div');
+        line.className = 'watchlistTitle';
+        var title = document.createElement('span');
+        title.className = 'watchlistText';
+        title.textContent = entry.title;
+        line.appendChild(title);
+        if (entry.mode === 'stream' || entry.mode === 'rent') {
+          var mode = document.createElement('span');
+          mode.className = 'watchlistMode';
+          mode.textContent = '(' + entry.mode + ')';
+          line.appendChild(mode);
+        }
+        lines.appendChild(line);
+      });
+      if (it.shows.length > 3) {
+        var more = document.createElement('div');
+        more.className = 'watchlistMore';
+        more.textContent = ((it.watchlistPage || 0) + 1) + ' of ' + Math.ceil(it.shows.length / 3) +
+          (watchlistBrowsing ? ' · Arrows to leave' : ' · Scroll wheel');
+        it.watchlist.appendChild(more);
+      }
+  }
+
+  function renderWatchlists() {
+    items.forEach(function (it) {
+      var shows = window.TVWatchlist ? TVWatchlist.get(it.app.id) : [];
+      var movies = window.MovieWatchlist ? MovieWatchlist.get(it.app.id) : [];
+      it.shows = combineWatchlist(shows, movies);
+      it.watchlistPage = 0;
+      renderWatchlist(it);
+    });
+  }
+
+  function changeWatchlistPage(direction) {
+    var it = items[focused];
+    if (zone !== 'grid' || editing || !it || it.shows.length <= 3) return false;
+    var pages = Math.ceil(it.shows.length / 3);
+    it.watchlistPage = ((it.watchlistPage || 0) + direction + pages) % pages;
+    renderWatchlist(it);
+    return true;
   }
 
   /** Places every tile by its position in items; tiles glide when the order changes. */
@@ -162,16 +310,25 @@
     items.forEach(function (it, i) {
       it.el.style.left = tileLeft(i) + 'px';
       it.el.style.top = tileTop(i) + 'px';
-      it.el.classList.toggle('dock', rowOf(i) === 0);   // the dock has no labels: the top shelf names it
+      it.el.style.width = it.card.style.width = tileWidth(i) + 'px';
+      it.el.setAttribute('data-section', sectionOf(i));
     });
+    placeBand('gamingBand', 'gamingLabel', 0, gamingCount, GAME_TOP, 28);
+    placeBand('dockBand', 'streamingLabel', gamingCount, streamingCount, DOCK_TOP, 72);
+    $('dockBand').style.height = (parseFloat($('dockBand').style.height) + watchlistExtra()) + 'px';
+    $('otherLabel').style.display = items.length > gamingCount + streamingCount ? 'block' : 'none';
+    $('otherLabel').style.top = (otherTop() - 84) + 'px';
+  }
 
-    var band = $('dockBand');
-    var n = Math.min(COLUMNS, items.length);
-    band.style.display = n ? 'block' : 'none';
-    band.style.left = (tileLeft(0) - 28) + 'px';
-    band.style.top = (DOCK_TOP - 28) + 'px';
-    band.style.width = ((n - 1) * CELL_W + TILE_W + 56) + 'px';
-    band.style.height = (TILE_H + 56) + 'px';
+  function placeBand(bandId, labelId, start, count, top, bottomPad) {
+    var band = $(bandId), label = $(labelId);
+    band.style.display = label.style.display = count ? 'block' : 'none';
+    band.style.left = (tileLeft(start) - 28) + 'px';
+    band.style.top = (top - 28) + 'px';
+    var columns = rowColumns(start);
+    band.style.width = ((Math.min(count, columns) - 1) * cellWidth(start) + tileWidth(start) + 56) + 'px';
+    band.style.height = (Math.max(0, Math.ceil(count / columns) - 1) * ROW_PITCH + TILE_H + 28 + bottomPad) + 'px';
+    label.style.top = (top - 84) + 'px';
   }
 
   function animateIn() {
@@ -288,30 +445,45 @@
 
   // ---- focus & glass -------------------------------------------------------------------------
 
+  function pointerMayFocus() {
+    return !editing && !watchlistBrowsing && Date.now() >= ignoreHoverUntil;
+  }
+
+  function releaseWatchlistFocus() {
+    ignoreHoverUntil = Date.now() + 500;  // Ignore hover events caused by the grid sliding under the cursor.
+    if (!watchlistBrowsing) return;
+    watchlistBrowsing = false;
+    if (items[focused]) renderWatchlist(items[focused]);
+  }
+
   function focusTile(i) {
     if (!items.length) return;
     i = Math.max(0, Math.min(i, items.length - 1));
     setZone('grid');
     if (items[focused]) items[focused].el.classList.remove('focused');
+    if (focused !== i && items[i].watchlistPage) {
+      items[i].watchlistPage = 0;
+      renderWatchlist(items[i]);
+    }
     focused = i;
     items[i].el.classList.add('focused');
+    layout();
 
     var top = tileTop(i), row = rowOf(i);
-    if (row === 0) {
+    if (row <= dockRow()) {
       offset = 0;
-    } else {
-      // Scroll just enough so the whole glass and the name below the tile are visible.
-      if (top - offset + TILE_H + 70 > VIEW_BOTTOM) offset = top + TILE_H + 70 - VIEW_BOTTOM;
-      if (top - offset - 24 < VIEW_TOP) offset = top - 24 - VIEW_TOP;
     }
+    // Include the selected service's show titles in the visible area.
+    if (top - offset + TILE_H + detailSpace(i) > VIEW_BOTTOM) offset = top + TILE_H + detailSpace(i) - VIEW_BOTTOM;
+    if (top - offset - 24 < VIEW_TOP) offset = top - 24 - VIEW_TOP;
     stage.style.transform = 'translateY(' + (-offset) + 'px)';
-    // Keep the header until the content (the dock band is topmost) would run into it.
+    // Hide the header before a row label scrolls into it.
     var header = document.querySelector('header');
     var headerBottom = header.offsetTop + header.offsetHeight;   // layout box: ignores the hide slide
-    document.body.classList.toggle('scrolled', DOCK_TOP - 28 - offset < headerBottom + 24);
+    document.body.classList.toggle('scrolled', (gamingCount ? GAME_TOP : DOCK_TOP) - 84 - offset < headerBottom + 24);
 
-    var w = TILE_W * FOCUS_SCALE + 2 * GLASS_PAD, h = TILE_H * FOCUS_SCALE + 2 * GLASS_PAD;
-    var x = tileLeft(i) + TILE_W / 2 - w / 2, y = top + TILE_H / 2 - h / 2;
+    var w = tileWidth(i) * FOCUS_SCALE + 2 * GLASS_PAD, h = TILE_H * FOCUS_SCALE + 2 * GLASS_PAD;
+    var x = tileLeft(i) + tileWidth(i) / 2 - w / 2, y = top + TILE_H / 2 - h / 2;
     glass.style.width = w + 'px';
     glass.style.height = h + 'px';
     glass.style.transform = 'translate(' + x + 'px,' + y + 'px)';
@@ -324,45 +496,12 @@
       glassShown = true;
     }
 
-    if (row === 0) showHero(items[i]);
-    else hideHero();
     setAmbient(items[i].color);   // the glow follows the focused tile in every row
   }
 
   function hideGlass() {
     glassShown = false;
     glass.style.opacity = '0';
-  }
-
-  function showHero(item) {
-    var label = item.app.title;
-    hero.style.top = (DOCK_TOP - 28 - 52 - 96) + 'px';
-    if (!heroShown) {
-      hero.textContent = label;
-      hero.style.transform = 'none';
-      hero.style.opacity = '1';
-      heroShown = true;
-    } else if (hero.textContent !== label) {
-      hero.style.opacity = '0';
-      hero.style.transform = 'translateX(-24px)';
-      clearTimeout(hero.swap);
-      hero.swap = setTimeout(function () {
-        hero.textContent = label;
-        hero.style.transition = 'none';
-        hero.style.transform = 'translateX(24px)';
-        hero.offsetWidth;
-        hero.style.transition = '';
-        hero.style.transform = 'none';
-        hero.style.opacity = '1';
-      }, 120);
-    }
-    setAmbient(item.color);
-  }
-
-  function hideHero() {
-    if (!heroShown) return;
-    heroShown = false;
-    hero.style.opacity = '0';
   }
 
   /** Crossfades the glow to a new colour by swapping between two layers. */
@@ -381,7 +520,10 @@
 
   function focusPill(i) {
     setZone('top');
+    layout();
     document.body.classList.remove('scrolled');
+    offset = 0;
+    stage.style.transform = 'translateY(0px)';
     pills[pillFocus].classList.remove('focused');
     pillFocus = Math.max(0, Math.min(i, pills.length - 1));
     pills[pillFocus].classList.add('focused');
@@ -399,7 +541,7 @@
 
   /** The pill straight above a dock tile, by horizontal distance. */
   function pillAbove(i) {
-    var cx = tileLeft(i) + TILE_W / 2, best = 0, bestD = Infinity;
+    var cx = tileLeft(i) + tileWidth(i) / 2, best = 0, bestD = Infinity;
     pills.forEach(function (p, k) {
       var r = p.getBoundingClientRect();
       var d = Math.abs(r.left + r.width / 2 - cx);
@@ -413,80 +555,17 @@
   function updateClock() {
     var now = new Date(), h = now.getHours();
     for (var k = 0; k < GREETINGS.length; k++) {
-      if (h < GREETINGS[k][0]) { $('greeting').textContent = GREETINGS[k][1]; break; }
+      if (h < GREETINGS[k][0]) { $('greetingText').textContent = GREETINGS[k][1] + (CONFIG.greetingName ? ', ' + CONFIG.greetingName : ''); break; }
     }
     var m = now.getMinutes();
     $('clock').textContent = ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m;
     $('ampm').textContent = h < 12 ? 'am' : 'pm';
-    $('date').textContent = DAYS[now.getDay()] + '  ' + now.getDate() + ' ' + MONTHS[now.getMonth()];
+    $('weekday').textContent = DAYS[now.getDay()];
+    $('date').textContent = now.getFullYear() + ' ' + MONTHS[now.getMonth()] + ' ' + now.getDate();
   }
 
-  /** Shows the Wi-Fi network name when the TV reports it, otherwise the connection type. */
-  function watchNetwork() {
-    luna('luna://com.palm.connectionmanager/getStatus', { subscribe: true }, function (res) {
-      if (res.returnValue === false && !res.wifi && !res.wired) return;
-      var text = 'Wi-Fi';
-      if (res.wired && res.wired.state === 'connected') text = 'Ethernet';
-      else if (res.wifi && res.wifi.state === 'connected') text = res.wifi.ssid || 'Wi-Fi';
-      else if (res.isInternetConnectionAvailable === false) text = 'Offline';
-      $('wifiLabel').textContent = text;
-    });
-  }
-
-  function activatePill(i) {
-    if (i === 0) showInputs();
-    else if (i === 1) launch('com.palm.app.settings', 'Settings', { target: 'network' });
-    else launch('com.palm.app.settings', 'Settings');
-  }
-
-  // ---- inputs dropdown -----------------------------------------------------------------------
-
-  function showInputs() {
-    panel.innerHTML = '';
-    inputRows = [];
-    var inputs = (window.TV_APPS && TV_APPS.inputs) || [];
-    inputs.forEach(function (inp) { addInputRow(ICON_INPUT, inp.label, inp.appId); });
-    if (CONFIG.liveTvApp) {
-      if (inputRows.length) panel.appendChild(Object.assign(document.createElement('div'), { className: 'separator' }));
-      addInputRow(ICON_LIVETV, 'Live TV', CONFIG.liveTvApp);
-    }
-    if (!inputRows.length) { toast('No inputs found'); return; }
-
-    // Hang right below the Inputs pill, at least as wide as it.
-    var r = pills[0].getBoundingClientRect();
-    panel.style.left = r.left + 'px';
-    panel.style.top = (r.bottom + 20) + 'px';
-    panel.style.minWidth = Math.max(r.width, 300) + 'px';
-    panel.classList.remove('hidden');
-    pills[pillFocus].classList.remove('focused');
-    zone = 'inputs';
-    focusInput(0);
-  }
-
-  function addInputRow(icon, label, appId) {
-    var row = document.createElement('div');
-    row.className = 'inputRow';
-    row.innerHTML = '<svg viewBox="0 0 24 24"><path d="' + icon + '"/></svg>';
-    row.appendChild(document.createTextNode(label));
-    var idx = inputRows.length;
-    row.addEventListener('mouseover', function () { focusInput(idx); });
-    row.addEventListener('click', function () { hideInputs(); launch(appId, label); });
-    row.appId = appId;
-    row.label = label;
-    inputRows.push(row);
-    panel.appendChild(row);
-  }
-
-  function focusInput(i) {
-    if (inputRows[inputFocus]) inputRows[inputFocus].classList.remove('focused');
-    inputFocus = Math.max(0, Math.min(i, inputRows.length - 1));
-    inputRows[inputFocus].classList.add('focused');
-  }
-
-  function hideInputs() {
-    panel.classList.add('hidden');
-    zone = 'none';
-    focusPill(0);
+  function activatePill() {
+    launch('com.palm.app.settings', 'Settings');
   }
 
   // ---- rearranging ---------------------------------------------------------------------------
@@ -495,14 +574,18 @@
   function startEdit() {
     var it = items[focused];
     if (!it) return;
+    releaseWatchlistFocus();
     editing = { item: it, snapshot: items.slice() };
     it.el.classList.add('moving');
     document.body.classList.add('editing');
     toast('Arrows to move  ·  OK to place  ·  Back to cancel');
+    focusTile(focused);
   }
 
   function moveTo(to) {
     if (to < 0 || to >= items.length || to === focused) return;
+    // Rearrange within each section so utilities stay outside the streaming panel.
+    if (sectionOf(focused) !== sectionOf(to)) return;
     items.splice(to, 0, items.splice(focused, 1)[0]);
     focused = to;
     layout();
@@ -527,6 +610,35 @@
 
   var LONG_PRESS_MS = 600;
   var okDown = false, okTimer = null;
+  var lastWatchlistWheel = 0;
+
+  // The pointer can wake before the first wheel event. Give that event a chance to lock the list.
+  document.addEventListener('cursorStateChange', function (e) {
+    if (e.detail && e.detail.visibility) ignoreHoverUntil = Date.now() + 300;
+  });
+
+  // The Magic Remote's wheel works in both pointer and directional navigation modes.
+  document.addEventListener('wheel', function (e) {
+    var it = items[focused];
+    if (!e.deltaY || zone !== 'grid' || editing || !it || it.shows.length <= 3) return;
+    e.preventDefault();
+    watchlistBrowsing = true;
+    var now = Date.now();
+    if (now - lastWatchlistWheel < 220) return;
+    lastWatchlistWheel = now;
+    changeWatchlistPage(e.deltaY > 0 ? 1 : -1);
+  }, { passive: false });
+
+  // In pointer mode the wheel's OK press can arrive as a click at the cursor's location.
+  // While browsing a list, that press belongs to the highlighted service, wherever the cursor is.
+  document.addEventListener('click', function (e) {
+    if (!watchlistBrowsing || zone !== 'grid' || editing) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (okDown || Date.now() - lastKeyActivation < 500) return;
+    var it = items[focused];
+    if (it) launch(it.app.id, it.app.title);
+  }, true);
 
   // On tiles OK acts on release, so a held OK can start rearranging instead of opening the app.
   document.addEventListener('keyup', function (e) {
@@ -536,26 +648,31 @@
     clearTimeout(okTimer);
     okTimer = null;
     var it = items[focused];
-    if (zone === 'grid' && it && !editing) launch(it.app.id, it.app.title);
+    if (zone === 'grid' && it && !editing) {
+      lastKeyActivation = Date.now();
+      launch(it.app.id, it.app.title);
+    }
   });
 
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
+    if (k === KEY.LEFT || k === KEY.RIGHT || k === KEY.UP || k === KEY.DOWN || k === KEY.BACK || k === KEY.ESC) {
+      releaseWatchlistFocus();
+    }
+    // Yellow/blue are optional remote alternatives; Page Up/Down also work on keyboards.
+    if (k === 33 || k === 34 || k === 405 || k === 406) {
+      if (changeWatchlistPage(k === 33 || k === 405 ? -1 : 1)) e.preventDefault();
+      return;
+    }
     if (k === KEY.OK && okDown) { e.preventDefault(); return; }   // key repeat while held
     if (k === KEY.OK) okDown = true;
     if (editing) {
       if (k === KEY.LEFT) moveTo(focused - 1);
       else if (k === KEY.RIGHT) moveTo(focused + 1);
-      else if (k === KEY.UP) moveTo(focused - COLUMNS);
-      else if (k === KEY.DOWN) moveTo(Math.min(focused + COLUMNS, items.length - 1));
+      else if (k === KEY.UP) moveTo(indexAt(rowOf(focused) - 1, columnOf(focused)));
+      else if (k === KEY.DOWN) moveTo(indexAt(rowOf(focused) + 1, columnOf(focused)));
       else if (k === KEY.OK) finishEdit(true);
       else if (k === KEY.BACK || k === KEY.ESC) finishEdit(false);
-      else return;
-    } else if (zone === 'inputs') {
-      if (k === KEY.UP) focusInput(inputFocus - 1);
-      else if (k === KEY.DOWN) focusInput(inputFocus + 1);
-      else if (k === KEY.OK) { var row = inputRows[inputFocus]; hideInputs(); launch(row.appId, row.label); }
-      else if (k === KEY.BACK || k === KEY.ESC || k === KEY.LEFT || k === KEY.RIGHT) hideInputs();
       else return;
     } else if (zone === 'top') {
       if (k === KEY.LEFT) focusPill(pillFocus - 1);
@@ -565,14 +682,14 @@
       else if (k === KEY.BACK) { /* home screen: Back goes nowhere */ }
       else return;
     } else {
-      var col = focused % COLUMNS, last = items.length - 1;
+      var col = columnOf(focused), last = items.length - 1;
       if (k === KEY.LEFT) { if (col > 0) focusTile(focused - 1); }
-      else if (k === KEY.RIGHT) { if (col < COLUMNS - 1 && focused < last) focusTile(focused + 1); }
+      else if (k === KEY.RIGHT) { if (focused < last && rowOf(focused + 1) === rowOf(focused)) focusTile(focused + 1); }
       else if (k === KEY.UP) {
         if (rowOf(focused) === 0) focusPill(pillAbove(focused));
-        else focusTile(focused - COLUMNS);
+        else focusTile(neighborInRow(rowOf(focused) - 1, focused));
       } else if (k === KEY.DOWN) {
-        if (rowOf(focused) < rowOf(last)) focusTile(Math.min(focused + COLUMNS, last));
+        if (rowOf(focused) < rowOf(last)) focusTile(neighborInRow(rowOf(focused) + 1, focused));
       } else if (k === KEY.OK) {
         okTimer = setTimeout(function () { okTimer = null; startEdit(); }, LONG_PRESS_MS);
       } else if (k === KEY.BACK) { /* home screen: Back goes nowhere */ }
@@ -582,31 +699,136 @@
   });
 
   pills.forEach(function (p, i) {
-    p.addEventListener('mouseover', function () { if (zone !== 'inputs') focusPill(i); });
+    function hoverPill() {
+      if (pointerMayFocus() && (zone !== 'top' || pillFocus !== i)) focusPill(i);
+    }
+    p.addEventListener('mouseover', hoverPill);
+    p.addEventListener('mousemove', hoverPill);
     p.addEventListener('click', function () { activatePill(i); });
   });
 
   // ---- lifecycle -----------------------------------------------------------------------------
 
+  var launchPointerHandled = false, launchPointerHandledAt = 0;
+
+  /** Start Home in button mode; webOS can show the pointer again when the remote moves. */
+  function hideLaunchPointer(relaunch) {
+    if (document.hidden) return;
+    var now = Date.now();
+    // Visibility and relaunch can describe the same opening. Do not hide it again after a wave.
+    if (launchPointerHandled && (!relaunch || now - launchPointerHandledAt < 1000)) return;
+    launchPointerHandled = true;
+    launchPointerHandledAt = now;
+    var system = window.webOSSystem;
+    if (!system || typeof system.setCursorHidden !== 'function') system = window.PalmSystem;
+    if (!system || typeof system.setCursorHidden !== 'function') return;
+    try { system.setCursorHidden(true); }
+    catch (e) { /* Older firmware and browser previews may not expose cursor control. */ }
+  }
+
+  var startupSoundStarted = false, startupSoundStartedAt = 0;
+
+  /** Choose one jingle per opening; visibility and relaunch can describe the same opening. */
+  function playStartupSound(relaunch) {
+    var tracks = (CONFIG.startupSounds || []).filter(function (track) { return typeof track === 'string' && track; });
+    if (!tracks.length || document.hidden) return;
+    var now = Date.now();
+    if (startupSoundStarted && (!relaunch || now - startupSoundStartedAt < 1000)) return;
+    startupSoundStarted = true;
+    startupSoundStartedAt = now;
+    stopStartupSound();
+    var sound = $('startupSound'), finished = false, pending = false, retry = false;
+    var retryTimer;
+
+    function stop() {
+      if (finished) return;
+      finished = true;
+      clearTimeout(retryTimer);
+      document.removeEventListener('keydown', onGesture);
+      document.removeEventListener('click', onGesture);
+      sound.removeEventListener('ended', stop);
+      sound.removeEventListener('error', stop);
+      sound.removeEventListener('playing', onPlaying);
+      sound.pause();
+      sound.removeAttribute('src');
+      sound.load();             // release the TV's media decoder before another app opens
+    }
+    function rejected(err) {
+      pending = false;
+      if (!finished && err && err.name === 'NotAllowedError') retry = true;
+      else stop();
+    }
+    function attempt() {
+      if (finished || pending || document.hidden) return;
+      pending = true;
+      retry = false;
+      try {
+        var result = sound.play();
+        if (result && result.then) result.then(function () { pending = false; }, rejected);
+        else pending = false;
+      } catch (err) { rejected(err); }
+    }
+    function onGesture() { if (retry) attempt(); }
+    function onPlaying() { clearTimeout(retryTimer); }
+
+    stopStartupSound = stop;
+    sound.addEventListener('ended', stop);
+    sound.addEventListener('error', stop);
+    sound.addEventListener('playing', onPlaying);
+    document.addEventListener('keydown', onGesture);
+    document.addEventListener('click', onGesture);
+    sound.src = tracks[Math.floor(Math.random() * tracks.length)];
+    retryTimer = setTimeout(stop, 10000);  // do not surprise the user with a delayed sound
+    attempt();
+  }
+
   /** Back from another app (or opened again from the shortcut): replay the entrance, keep the tile. */
-  function resume() {
+  function resume(relaunch) {
     if (editing) finishEdit(false);
+    hideLaunchPointer(relaunch);
+    releaseWatchlistFocus();
     updateClock();
-    if (zone === 'inputs') panel.classList.add('hidden');
+    renderWatchlists();
     pills.forEach(function (p) { p.classList.remove('focused'); });
     zone = 'none';
     animateIn();
     focusTile(focused);
+    playStartupSound(relaunch);
   }
 
-  document.addEventListener('webOSRelaunch', resume);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) resume(); });
+  document.addEventListener('webOSRelaunch', function (e) {
+    if (window.TVWatchlist && TVWatchlist.receive(e.detail)) return;
+    resume(true);
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      launchPointerHandled = false;
+      startupSoundStarted = false;
+      stopStartupSound();
+    }
+    else resume();
+  });
 
+  hideLaunchPointer();
+  $('gamingLabel').textContent = CONFIG.gamingTitle || 'Game Zone';
+  $('streamingLabel').textContent = CONFIG.streamingTitle || 'Streaming';
+  $('otherLabel').textContent = CONFIG.otherTitle || 'Other apps';
+  $('greetingIcon').style.display = CONFIG.showDogIcon ? '' : 'none';
   build();
+  if (window.TVWatchlist) TVWatchlist.onChange(function () {
+    renderWatchlists();
+    if (zone === 'grid') focusTile(focused);
+    else layout();
+  });
+  if (window.MovieWatchlist) MovieWatchlist.onChange(function () {
+    renderWatchlists();
+    if (zone === 'grid') focusTile(focused);
+    else layout();
+  });
   updateClock();
   setInterval(updateClock, 10000);
-  watchNetwork();
   animateIn();
   zone = 'none';
   focusTile(0);
+  playStartupSound();
 })();

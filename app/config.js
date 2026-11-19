@@ -1,21 +1,26 @@
-// Launcher configuration. Edit this file, then run webos-launcher/install.sh.
-// App ids: run `python3 sync-apps.py --list` (or look in app/apps.js after a sync).
+// Shareable defaults. Put household settings in ignored config.local.js.
+// HDMI assignments below are examples: change them to match your cabling.
 window.CONFIG = {
-  // Apps pinned to the dock row at the bottom, in this order. Missing apps are skipped.
-  dockApps: ['netflix', 'amazon', 'youtube.leanback.v4', 'hotstar'],
-
-  // Apps never shown as tiles (inputs and Live TV are already in the Inputs menu).
-  hiddenApps: [
-    'com.gathin.tvhome',
-    'com.webos.app.livetv',
-    'com.webos.app.hdmi1', 'com.webos.app.hdmi2', 'com.webos.app.hdmi3', 'com.webos.app.hdmi4',
-    'com.webos.app.lgchannels',   // LG Channels
-    'shortcutcopilot'             // Copilot
+  greetingName: '',
+  showDogIcon: false,
+  gamingTitle: 'Game Zone',
+  streamingTitle: 'Streaming',
+  otherTitle: 'Other apps',
+  gamingApps: ['com.webos.app.hdmi1', 'com.webos.app.hdmi2', 'com.webos.app.hdmi3', 'com.twin.app.gamingportal'],
+  dockApps: ['netflix', 'amazon', 'youtube.leanback.v4', 'com.apple.appletv'],
+  streamingApps: [
+    'netflix', 'amazon', 'youtube.leanback.v4', 'com.apple.appletv',
+    'com.disney.disneyplus-prod', 'com.wbd.stream', 'hulu', 'com.cbs-all-access.webapp.prod',
+    'com.peacock.tv', 'cdp-30'
   ],
-
-  // The Live TV app, offered at the end of the Inputs menu. Leave empty to omit.
-  liveTvApp: 'com.webos.app.livetv',
-
-  // Tiles per row in the grid; the dock always has this many slots.
+  startupSounds: [],
+  weather: null,
+  watchlist: { enabled: false },
+  inputApps: [
+    { id: 'com.webos.app.hdmi1', title: 'XBOX', icon: 'brands/xbox.svg', iconColor: '#107c10' },
+    { id: 'com.webos.app.hdmi2', title: 'PlayStation 5', icon: 'brands/playstation.svg', iconColor: '#003791' },
+    { id: 'com.webos.app.hdmi3', title: 'PC', icon: 'brands/steam.svg', iconColor: '#1b4567' }
+  ],
+  hiddenApps: ['com.gathin.tvhome', 'com.webos.app.livetv', 'com.webos.app.lgchannels', 'shortcutcopilot'],
   columns: 4
 };

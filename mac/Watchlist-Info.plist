@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.tvvibehack.watchlist</string>
+  <key>CFBundleName</key><string>TV Watchlist</string>
+  <key>CFBundleDisplayName</key><string>TV Watchlist</string>
+  <key>CFBundleExecutable</key><string>TVWatchlist</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>Read the incomplete shows in your selected TV watchlist and display their titles on your LG TV. This helper never creates, edits, or completes reminders.</string>
+</dict></plist>

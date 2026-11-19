@@ -19,14 +19,48 @@ import sys
 import time
 
 import lgtv
+from movie_watchlist import load_payload as load_movies
 
 LAUNCHER = "com.gathin.tvhome"
 LG_HOME = "com.webos.app.home"
 ESCAPE_SECONDS = 3.0
+WATCHLIST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "watchlist.json")
+MOVIE_WATCHLIST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "movie-watchlist.json")
+STREAMING_IDS = {
+    "netflix", "amazon", "youtube.leanback.v4", "com.apple.appletv", "com.disney.disneyplus-prod",
+    "com.wbd.stream", "hulu", "com.cbs-all-access.webapp.prod", "com.peacock.tv", "cdp-30",
+}
 
 
 def log(*args):
     print(time.strftime("%Y-%m-%d %H:%M:%S"), *args, flush=True)
+
+
+def home_payload():
+    """Include only the TV list's show titles when Home is intentionally opened."""
+    payload = {"id": LAUNCHER}
+    movies = load_movies(MOVIE_WATCHLIST_FILE)
+    if movies is not None:
+        payload["params"] = {"movieWatchlist": movies}
+    try:
+        with open(WATCHLIST_FILE) as f:
+            raw = f.read(100_001)
+        if len(raw) > 100_000:
+            return payload
+        data = json.loads(raw)
+        if (data.get("version") != 1 or data.get("source") != "reminders"
+                or not isinstance(data.get("shows"), dict) or not isinstance(data.get("updatedAt"), str)):
+            return payload
+        shows = {}
+        for app_id, titles in data["shows"].items():
+            if app_id in STREAMING_IDS and isinstance(titles, list):
+                shows[app_id] = list(dict.fromkeys(
+                    title.strip()[:300] for title in titles[:100] if isinstance(title, str) and title.strip()))
+        payload.setdefault("params", {})["watchlist"] = {"version": 1, "source": "reminders",
+                                                        "updatedAt": data["updatedAt"], "shows": shows}
+    except (OSError, ValueError, AttributeError, TypeError):
+        pass  # Home must keep working even if Reminders is unavailable.
+    return payload
 
 
 async def watch(host):
@@ -51,7 +85,7 @@ async def watch(host):
                 continue
             last_redirect = now
             await ws.send(json.dumps({"type": "request", "id": "launch", "uri": "ssap://system.launcher/launch",
-                                      "payload": {"id": LAUNCHER}}))
+                                      "payload": home_payload()}))
             log("LG home -> launcher")
     finally:
         await ws.close()

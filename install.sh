@@ -21,6 +21,9 @@ PY="${PY:-python3}"
 [ -x venv/bin/python ] && PY=venv/bin/python
 "$PY" sync-apps.py "$TV_HOST"
 
+# Keep household configuration in an ignored file, loaded after public defaults.
+[ -f app/config.local.js ] || printf '%s\n' '// Private overrides go here.' > app/config.local.js
+
 if [ ! -f app/icon.png ]; then
   # The webOS app list wants PNG icons: 80px and 130px.
   sips -s format png -z 80 80 assets/icon.jpg --out app/icon.png >/dev/null

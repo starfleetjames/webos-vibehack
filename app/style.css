@@ -28,21 +28,6 @@ html, body {
   pointer-events: none;
 }
 
-/* ---- top shelf ------------------------------------------------------------------------------- */
-
-#hero {
-  position: absolute;
-  left: 136px;
-  font-size: 96px;
-  font-weight: 300;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  white-space: nowrap;
-  opacity: 0;
-  transition: opacity 260ms ease, transform 200ms ease;
-  pointer-events: none;
-}
-
 /* ---- header ---------------------------------------------------------------------------------- */
 
 header {
@@ -65,6 +50,9 @@ body.scrolled header {
 }
 
 #greeting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-left: 8px;
   color: rgba(255, 255, 255, 0.55);
   font-size: 24px;
@@ -73,7 +61,14 @@ body.scrolled header {
   text-transform: uppercase;
 }
 
+.greetingEmoji {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
 #timeRow { display: flex; align-items: flex-end; }
+#timeRow > * { flex-shrink: 0; }
 
 #clock {
   font-size: 104px;
@@ -93,22 +88,47 @@ body.scrolled header {
 
 .divider {
   width: 2px;
-  height: 52px;
+  height: 70px;
   margin: 0 32px 16px;
   background: rgba(255, 255, 255, 0.2);
 }
 
-#date {
-  margin-bottom: 18px;
+#dateBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
   color: rgba(255, 255, 255, 0.65);
   font-size: 28px;
   font-weight: 400;
+  line-height: 1.2;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  white-space: pre;
+  white-space: nowrap;
 }
 
-#topButtons { display: flex; margin-bottom: 12px; }
+#topButtons { display: flex; align-self: flex-start; margin-top: 38px; }
+
+#weather {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 88px;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  font-size: 28px;
+  color: rgba(255, 255, 255, 0.76);
+}
+
+#weatherIcon { display: flex; width: 72px; height: 72px; flex-shrink: 0; }
+#weatherIcon:empty, #weatherTemperature:empty { display: none; }
+#weatherIcon svg { width: 100%; height: 100%; }
+#weatherTemperature { color: #fff; font-size: 88px; font-weight: 300; line-height: 1; letter-spacing: -0.04em; }
+#weatherDetails { display: flex; flex-direction: column; gap: 5px; max-width: 250px; }
+#weatherCondition { white-space: normal; line-height: 1.15; }
+#weatherUpdated { color: rgba(255, 255, 255, 0.55); font-size: 16px; }
+#weatherUpdated:empty { display: none; }
+#weather.stale #weatherCondition { color: rgba(255, 255, 255, 0.55); }
 
 /* Frosted pill, tvOS style. */
 .pill {
@@ -152,11 +172,12 @@ body.scrolled header {
 }
 
 /* The tvOS lighter band behind the dock row. */
-#dockBand {
+.dockBand {
   position: absolute;
   border-radius: 52px;
   background: #141416;
   border: 2px solid rgba(255, 255, 255, 0.12);
+  transition: height 320ms ease;
 }
 
 .item {
@@ -170,7 +191,15 @@ body.scrolled header {
 
 .item.shown { opacity: 1; transform: none; }
 
-.item.dock .name { display: none; }
+.rowLabel {
+  position: absolute;
+  left: 136px;
+  font-size: 40px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: rgba(255, 255, 255, 0.9);
+}
 
 /* Rearranging: the held tile wiggles and floats above the others; the glass steps aside. */
 .item.moving { z-index: 2; }
@@ -244,6 +273,26 @@ body.editing #glass { opacity: 0 !important; }
 
 .item.focused .name { opacity: 1; transform: translateY(8px); }
 
+/* Only the selected service reveals its list; other tiles keep the original quiet layout. */
+.watchlist {
+  display: none;
+  position: absolute;
+  top: 240px;
+  width: 360px;
+  text-align: center;
+  pointer-events: none;
+}
+.item.focused.hasWatchlist .watchlist { display: block; }
+.item.focused.hasWatchlist .name { visibility: hidden; }
+.watchlistHeading { color: rgba(255, 255, 255, 0.48); font-size: 14px; line-height: 18px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 4px; }
+.watchlistLines.paged { min-height: 78px; }
+.watchlistTitle { display: flex; justify-content: center; align-items: baseline; color: rgba(255, 255, 255, 0.9); font-size: 22px; line-height: 26px; white-space: nowrap; }
+.watchlistText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.watchlistMode { flex-shrink: 0; margin-left: 6px; color: rgba(255, 255, 255, 0.6); font-size: 18px; }
+.watchlistMore { color: rgba(255, 255, 255, 0.52); font-size: 16px; line-height: 20px; }
+body.editing .item .watchlist { display: none; }
+body.editing .item.focused.hasWatchlist .name { visibility: visible; }
+
 /* The single floating glass highlight that springs between tiles. */
 #glass {
   position: absolute;
@@ -269,38 +318,6 @@ body.editing #glass { opacity: 0 !important; }
   height: 45%;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0));
 }
-
-/* ---- inputs dropdown ------------------------------------------------------------------------- */
-
-#inputsPanel {
-  position: absolute;
-  z-index: 5;
-  padding: 16px;
-  border-radius: 40px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  background: linear-gradient(180deg, rgba(42, 42, 46, 0.95), rgba(22, 22, 24, 0.96));
-  transform-origin: top;
-  transition: opacity 220ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.3, 1);
-}
-
-#inputsPanel.hidden { opacity: 0; transform: translateY(-16px) scaleY(0.92); pointer-events: none; }
-
-.inputRow {
-  display: flex;
-  align-items: center;
-  height: 84px;
-  padding: 0 24px;
-  border-radius: 24px;
-  font-size: 30px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.inputRow svg { width: 40px; height: 40px; margin-right: 20px; fill: currentColor; }
-
-.inputRow.focused { background: rgba(255, 255, 255, 0.96); color: #000; }
-
-.separator { height: 2px; margin: 12px 24px; background: rgba(255, 255, 255, 0.12); }
 
 /* ---- toast ----------------------------------------------------------------------------------- */
 

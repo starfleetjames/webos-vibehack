@@ -1,9 +1,15 @@
 # webos-vibehack
 
-An Apple TV-style home screen for LG TVs. It's a webOS port of the launcher from
+An Apple TV-style home screen for LG TVs, based on
+[OmkarK97/webos-vibehack](https://github.com/OmkarK97/webos-vibehack). It's a webOS port of the launcher from
 [tv-vibehack](https://github.com/Gathin23/tv-vibehack), which does the same for Android TVs.
 
-![The launcher running on an LG OLED C6](docs/screenshot.jpg)
+This fork adds configurable gaming and streaming sections, branded HDMI tiles,
+receiver-aware console shortcuts, local weather, optional Reminders and movie
+watchlists, random startup audio, and Magic Remote pointer/focus improvements.
+Household settings and content are deliberately excluded; see [PRIVACY.md](PRIVACY.md).
+
+The screenshot in `docs/` belongs to the original upstream version.
 
 Tested on an LG OLED C6 (OLED55C6XLA, webOS 26, firmware 43.21.79).
 
@@ -47,9 +53,9 @@ npx -y -p @webos-tools/cli ares-setup-device -m lgtv -i "{'privatekey':'lgtv_web
 **3. Install**
 
 ```bash
-git clone https://github.com/OmkarK97/webos-vibehack.git
+git clone https://github.com/starfleetjames/webos-vibehack.git
 cd webos-vibehack
-python3 -m venv venv && venv/bin/pip install websockets
+python3 -m venv venv && venv/bin/pip install -r requirements.txt
 TV_HOST=192.168.1.50 ./install.sh
 ```
 
@@ -88,17 +94,48 @@ as a Raspberry Pi.
 
 ## Using it
 
-Same as the [Android launcher](https://github.com/Gathin23/tv-vibehack#the-launcher): a dock of four apps with the focused app's name above it and a glow
-in its colour, the rest of your apps in a grid below, and Inputs (HDMI ports and Live TV), Wi-Fi
-and Settings at the top. The header slides away when the grid scrolls into it.
+The first highlighted section contains gaming inputs and LG Gaming Portal. The
+next section groups streaming apps; other installed apps appear below. Only the
+focused streaming tile shows its optional watchlist, keeping the grid compact.
+The clock has a weekday and a separate year–month–day date. Weather appears beside
+it when a nearby NWS station is configured.
 
-**Rearrange tiles on the TV**: hold **OK** on a tile until it wiggles, move it with the arrows
-(into the top row puts it in the dock), then **OK** to place it or **Back** to cancel. The order is
-saved on the TV.
+Hold **OK** on a tile to rearrange it within its section, use arrows to move it,
+then **OK** to save or **Back** to cancel. Scroll a long watchlist with the center
+wheel; focus stays on the selected app even if the pointer drifts. An arrow or
+Back releases that hold. Home hides the pointer once on supported firmware;
+deliberate remote movement can show it again.
 
-**Configure** in [`app/config.js`](app/config.js): the starting dock, apps to hide, the Live TV
-app and the number of columns. App ids come from `venv/bin/python sync-apps.py $TV_HOST --list`.
-Changing `dockApps` resets an order arranged on the TV.
+## Private configuration
+
+Copy `app/config.local.example.js` to `app/config.local.js`, customize it, then
+run `install.sh` again. The ignored local file overrides public defaults in
+[`app/config.js`](app/config.js). Installation creates an empty override file
+if one does not exist. Match the example HDMI assignments to your own cabling.
+Use `venv/bin/python sync-apps.py "$TV_HOST" --list` to find installed app IDs.
+
+- Set `greetingName`, `showDogIcon` and section titles locally.
+- Set `weather` to an NWS station, or leave it `null` to hide weather.
+- Put your own audio in `app/audio/` and list it in `startupSounds`.
+- Enable watchlist display locally and configure [Reminders](WATCHLIST.md) and/or
+  a separately scheduled [movie refresh](MOVIES.md).
+- Add a [receiver-connected console tile](SWITCH.md) using its observed CEC path.
+
+No music, watchlist content, account links, TV pairing keys or personal settings
+are included. Do not publish generated TV packages, which can contain those files.
+
+## Validation
+
+With Node.js 22+ and Python 3 with `requirements.txt` installed:
+
+```sh
+bash tests/run.sh
+```
+
+Tests use synthetic app lists, observations and titles. The privacy check reads
+the Git index, so stage the intended public changes first. To check the native
+Reminders parser without granting access, compile `mac/Watchlist.swift` to a
+temporary location and run it with `--self-test`.
 
 ## Cleaning up LG's home
 

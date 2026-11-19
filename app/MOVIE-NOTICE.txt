@@ -1,0 +1,5 @@
+Optional U.S. streaming and rental availability comes from Letterboxd's public
+JustWatch panels. A separately configured browser refresh supplies the local
+cache. No account, film list or refresh schedule is included in this repository.
+Purchase-only offers and unrelated add-on subscriptions are excluded. Listings
+can change or lag a provider's catalogue.

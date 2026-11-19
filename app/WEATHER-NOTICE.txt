@@ -1,0 +1,12 @@
+Weather observations: NOAA / National Weather Service
+API documentation: https://www.weather.gov/documentation/services-web-api
+Public-domain data policy: https://www.weather.gov/disclaimer
+
+Weather is disabled until a station is chosen in local configuration.
+The launcher converts observations to Fahrenheit, rounds readings, and maps
+condition codes to short descriptions and original SVG icons. This is not an
+official NOAA/NWS product and does not imply NOAA/NWS endorsement.
+
+Readings refresh every 15 minutes. Airport reports are normally hourly; readings
+older than 75 minutes display their observation time. Readings older than
+90 minutes are not shown. Missing readings fall back to a recent valid report.
